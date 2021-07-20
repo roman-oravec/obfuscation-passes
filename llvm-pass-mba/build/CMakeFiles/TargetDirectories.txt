@@ -1,6 +1,0 @@
-/home/kali/dp/playground/llvm-pass-mba/build/CMakeFiles/rebuild_cache.dir
-/home/kali/dp/playground/llvm-pass-mba/build/CMakeFiles/edit_cache.dir
-/home/kali/dp/playground/llvm-pass-mba/build/CMakeFiles/intrinsics_gen.dir
-/home/kali/dp/playground/llvm-pass-mba/build/mba/CMakeFiles/rebuild_cache.dir
-/home/kali/dp/playground/llvm-pass-mba/build/mba/CMakeFiles/edit_cache.dir
-/home/kali/dp/playground/llvm-pass-mba/build/mba/CMakeFiles/MbaPass.dir
