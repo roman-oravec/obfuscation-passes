@@ -1,0 +1,1 @@
+/usr/bin/c++ -fPIC -shared  -o libMbaPass.so CMakeFiles/MbaPass.dir/mba.cpp.o   -L/usr/lib/llvm-9/lib 
