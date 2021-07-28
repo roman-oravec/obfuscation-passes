@@ -1,3 +1,9 @@
+#define DEBUG_TYPE "mba"
+
+//TODO build LLVM with stats enabled and try this
+#include "llvm/ADT/Statistic.h"
+STATISTIC(MBACount, "The number of substituted instructions with MBA");
+
 #include "llvm/Pass.h"
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/Module.h"
@@ -50,22 +56,32 @@ namespace {
         switch(Opcode){
           case Instruction::Add:
             ReplaceInstWithValue(BB.getInstList(), current, SubAdd(BinOp));
+            ++MBACount;
+            changed = true;
             break;
           case Instruction::Sub: 
             ReplaceInstWithValue(BB.getInstList(), current, SubSub(BinOp));
+            ++MBACount;
+            changed = true;
             break;
           case Instruction::Xor:
             ReplaceInstWithValue(BB.getInstList(), current, SubXor(BinOp));
+            ++MBACount;
+            changed = true;
             break;
           case Instruction::And:
             ReplaceInstWithValue(BB.getInstList(), current, SubAnd(BinOp));
+            ++MBACount;
+            changed = true;
             break;
           case Instruction::Or:
             ReplaceInstWithValue(BB.getInstList(), current, SubOr(BinOp));
+            ++MBACount;
+            changed = true;
             break;
           default: continue;
         }
-        changed = true;
+        
       } // for loop
       return changed;
     } // runOnBasicBlock
