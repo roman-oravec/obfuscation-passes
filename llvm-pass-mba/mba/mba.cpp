@@ -11,6 +11,7 @@ STATISTIC(MBACount, "The number of substituted instructions with MBA");
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/IR/InstrTypes.h"
 #include "llvm/Transforms/Utils/BasicBlockUtils.h"
+#include "llvm/Support/RandomNumberGenerator.h"
 
 using namespace llvm;
 
@@ -27,12 +28,16 @@ namespace {
     MbaPass() : BasicBlockPass(ID) {}
 
     Value *SubAdd(BinaryOperator *BinOp);
+    Value *SubAdd2(BinaryOperator *BinOp);
     Value *SubSub(BinaryOperator *BinOp);
     Value *SubXor(BinaryOperator *BinOp);
     Value *SubAnd(BinaryOperator *BinOp);
     Value *SubOr(BinaryOperator *BinOp);
 
     virtual bool runOnBasicBlock(BasicBlock &BB) {
+      auto rng = BB.getParent()->getParent()->createRNG(this);
+      int randNum = (*rng)() % 7;
+      errs() << "Generated random number: " << randNum << '\n';
       
       bool changed = false;
       for (auto current = BB.begin(), last = BB.end(); current != last; current++){
@@ -55,7 +60,7 @@ namespace {
 
         switch(Opcode){
           case Instruction::Add:
-            ReplaceInstWithValue(BB.getInstList(), current, SubAdd(BinOp));
+            ReplaceInstWithValue(BB.getInstList(), current, SubAdd2(BinOp));
             ++MBACount;
             changed = true;
             break;
@@ -104,6 +109,25 @@ Value* MbaPass::SubAdd(BinaryOperator *BinOp){
       BinOp->getOperand(0), 
       BinOp->getOperand(1))      
   );
+  return NewValue;
+}
+
+// Substitute x + y --> (x^(~y)) + 2*(x|y) + 1
+Value *MbaPass::SubAdd2(BinaryOperator *BinOp){
+  Value *NewValue;
+  IRBuilder<> Builder(BinOp);
+  NewValue = 
+  Builder.CreateAdd(
+    Builder.CreateXor(
+      BinOp->getOperand(0),
+      Builder.CreateNot(BinOp->getOperand(1))
+    ),
+    Builder.CreateMul(
+      ConstantInt::get(BinOp->getType(), 2),
+      Builder.CreateOr(BinOp->getOperand(0), BinOp->getOperand(1))
+    )
+  );
+  NewValue = Builder.CreateAdd(NewValue, ConstantInt::get(BinOp->getType(),1));
   return NewValue;
 }
 
