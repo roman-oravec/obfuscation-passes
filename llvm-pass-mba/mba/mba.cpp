@@ -36,8 +36,8 @@ namespace {
 
     virtual bool runOnBasicBlock(BasicBlock &BB) {
       auto rng = BB.getParent()->getParent()->createRNG(this);
-      int randNum = (*rng)() % 7;
-      errs() << "Generated random number: " << randNum << '\n';
+      
+      //errs() << "Generated random number: " << randNum << '\n';
       
       bool changed = false;
       for (auto current = BB.begin(), last = BB.end(); current != last; current++){
@@ -55,12 +55,18 @@ namespace {
         if (!BinOp->getType()->isIntegerTy())
           continue;
         
-        IRBuilder<> Builder(BinOp);
-        Value *NewValue;
-
+        
+        int randNum = (*rng)();
         switch(Opcode){
           case Instruction::Add:
-            ReplaceInstWithValue(BB.getInstList(), current, SubAdd2(BinOp));
+            switch (randNum % 2){
+            case 0:
+              ReplaceInstWithValue(BB.getInstList(), current, SubAdd(BinOp));
+              break;
+            case 1:
+              ReplaceInstWithValue(BB.getInstList(), current, SubAdd2(BinOp));
+              break;
+            }
             ++MBACount;
             changed = true;
             break;
@@ -96,6 +102,7 @@ namespace {
 
 // Substitute x + y --> 2*(x | y) - (x ^ y)
 Value* MbaPass::SubAdd(BinaryOperator *BinOp){
+  errs() << "Using SubAdd: x + y --> 2*(x | y) - (x ^ y)" << '\n';
   Value *NewValue;
   IRBuilder<> Builder(BinOp);
   NewValue = Builder.CreateSub(
@@ -114,6 +121,7 @@ Value* MbaPass::SubAdd(BinaryOperator *BinOp){
 
 // Substitute x + y --> (x^(~y)) + 2*(x|y) + 1
 Value *MbaPass::SubAdd2(BinaryOperator *BinOp){
+  errs() << "Using SubAdd2: x + y --> (x^(~y)) + 2*(x|y) + 1" << '\n';
   Value *NewValue;
   IRBuilder<> Builder(BinOp);
   NewValue = 
