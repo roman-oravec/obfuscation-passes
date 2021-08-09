@@ -1,5 +1,6 @@
 #!/bin/bash
 rm -rf build/*
+rm $1_bogus $1.ll $1_bogus.ll  
 cd build
 cmake ..
 make
