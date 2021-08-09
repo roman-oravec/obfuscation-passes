@@ -11,3 +11,4 @@
 *.ll
 *.c
 **/.vscode
+*.dot
