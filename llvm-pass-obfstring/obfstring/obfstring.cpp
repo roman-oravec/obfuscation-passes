@@ -8,6 +8,8 @@
 #include "llvm/Transforms/Utils/Cloning.h"
 #include <typeinfo>
 
+#define STRING_ENCRYPTION_KEY "S5zeMZ68*K7ddKwiOWTt"
+
 using namespace std;
 using namespace llvm;
 
@@ -58,7 +60,7 @@ Function *createDecodeStubFunc(Module &M, vector<GlobalString*> &GlobalStrings, 
 	return DecodeStubFunc;
 }
 
-
+//TODO: use llvm::parseIRFile()
 Function *createDecodeFunc(Module &M){
 	auto &Ctx = M.getContext();
 	FunctionCallee DecodeFuncCallee = M.getOrInsertFunction("decode", 
@@ -126,8 +128,46 @@ void createDecodeStubBlock(Function *F, Function *DecodeStubFunc){
 	Builder.CreateBr(&EntryBlock);
 }
 
-//TODO add advanced encoding
+// used for debug, remove later
+void PrintDecoded(const unsigned char *str, unsigned int len) {
+	int i = 0;
+	unsigned char *decStr = (unsigned char *)calloc(len, sizeof(unsigned char));
+  	for (; str[i] != 0; ++i) {
+    	unsigned key_idx = i % (sizeof(STRING_ENCRYPTION_KEY) - 1);
+    	decStr[i] = str[i]^STRING_ENCRYPTION_KEY[key_idx];
+    	if (decStr[i] == 0xff) {
+      		decStr[i] = STRING_ENCRYPTION_KEY[key_idx];
+    	}
+  	}
+  	errs() << format(" \nDecoded string:%s\n", reinterpret_cast<char *>(decStr));
+  	return;
+}
+
 char *EncodeString(const char* Data, unsigned int Length) {
+	// Encode string
+	unsigned char *NewData = (unsigned char*)calloc(Length, sizeof(unsigned char));
+	int i = 0;
+	for (; Data[i] != 0; ++i) {
+		errs() << format("%c\t%X\t%X\n", Data[i],Data[i], NewData[i]);
+		unsigned key_idx = i % (sizeof(STRING_ENCRYPTION_KEY) - 1);
+		if (Data[i] == 0xff) {
+			// value 0xff is banned in the string because it is used as
+			// a placeholder for 0 in encrypted result
+			NewData[i] = '.';
+		}
+		NewData[i] = Data[i]^STRING_ENCRYPTION_KEY[key_idx];
+		if (NewData[i] == 0) {
+			NewData[i] = STRING_ENCRYPTION_KEY[key_idx] ^ 0xff;
+		}
+	}
+	errs() << format("%c\t%X\t%X\n", Data[i++],Data[i++], NewData[i++]);
+	PrintDecoded(NewData, Length);
+	errs() << "---------------------------------\n";
+	return reinterpret_cast<char *>(NewData);
+}
+
+// Original enc with ROR1:
+/* char *EncodeString(const char* Data, unsigned int Length) {
 	// Encode string
 	char *NewData = (char*)malloc(Length);
 	for(unsigned int i = 0; i < Length; i++){
@@ -135,7 +175,7 @@ char *EncodeString(const char* Data, unsigned int Length) {
 	}
 
 	return NewData;
-}
+} */
 
 vector<GlobalString*> encodeGlobalStrings(Module& M){
 	vector<GlobalString*> GlobalStrings;
