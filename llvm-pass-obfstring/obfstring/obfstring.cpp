@@ -8,12 +8,13 @@
 #include "llvm/Passes/PassPlugin.h"
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/Transforms/Utils/Cloning.h"
+#include <llvm/ExecutionEngine/Interpreter.h>
+#include <llvm/ExecutionEngine/GenericValue.h>
 #include <typeinfo>
-
-#define STRING_ENCRYPTION_KEY "S5zeMZ68*K7ddKwiOWTt"
 
 using namespace std;
 using namespace llvm;
+
 
 namespace {
 class GlobalString {
@@ -41,6 +42,12 @@ Function *createDecodeStubFunc(Module &M, vector<GlobalString *> &GlobalStrings,
       M.getOrInsertFunction("decode_stub",
                             /*ret*/ Type::getVoidTy(Ctx));
   Function *DecodeStubFunc = cast<Function>(DecodeStubCallee.getCallee());
+
+  DecodeStubFunc->removeFnAttr(llvm::Attribute::OptimizeNone);
+  DecodeStubFunc->removeFnAttr(llvm::Attribute::NoInline);
+  DecodeStubFunc->addFnAttr(llvm::Attribute::AlwaysInline);
+  // Set internal linkage to avoid naming conflicts
+  DecodeStubFunc->setLinkage(llvm::GlobalValue::LinkageTypes::InternalLinkage);
   DecodeStubFunc->setCallingConv(CallingConv::C);
 
   // Create entry block
@@ -65,13 +72,12 @@ Function *createDecodeStubFunc(Module &M, vector<GlobalString *> &GlobalStrings,
   return DecodeStubFunc;
 }
 
-// TODO: use llvm::parseIRFile()
 Function *createDecodeFunc(Module &M) {
   auto &Ctx = M.getContext();
   llvm::SMDiagnostic mod_err;
 
   // TODO: use flag instead of hardcoded path
-  unique_ptr<Module> DecModule = parseIRFile("decode.bc", mod_err, Ctx);
+  unique_ptr<Module> DecModule = parseIRFile("codec.bc", mod_err, Ctx);
   if (!DecModule)
     mod_err.print("Unable to parse BC file", errs());
   // Check if we have an decoding function
@@ -115,28 +121,36 @@ void createDecodeStubBlock(Function *F, Function *DecodeStubFunc) {
   Builder.CreateBr(&EntryBlock);
 }
 
-// TODO: import the function instead
-char *EncodeString(const char *Data, unsigned int Length) {
-  // Encode string
-  unsigned char *NewData =
-      (unsigned char *)calloc(Length, sizeof(unsigned char));
-  int i = 0;
-  for (; Data[i] != 0; ++i) {
-    unsigned key_idx = i % (sizeof(STRING_ENCRYPTION_KEY) - 1);
-    if (Data[i] == 0xff) {
-      NewData[i] = '.';
-    }
-    NewData[i] = Data[i] ^ STRING_ENCRYPTION_KEY[key_idx];
-    if (NewData[i] == 0) {
-      NewData[i] = STRING_ENCRYPTION_KEY[key_idx] ^ 0xff;
-    }
-  }
-  return reinterpret_cast<char *>(NewData);
+Constant *EncodeString(std::unique_ptr<ExecutionEngine> &engine, ConstantDataArray *CDA, LLVMContext &Ctx){
+  std::string encStr = CDA->getAsCString().str();
+  std::vector<llvm::GenericValue> args(1);
+  args[0].PointerVal = (void *)encStr.c_str();
+  auto encFun = engine->FindFunctionNamed("encode");
+  engine->runFunction(encFun, args);
+  return ConstantDataArray::getString(Ctx, encStr);
 }
 
 vector<GlobalString *> encodeGlobalStrings(Module &M) {
   vector<GlobalString *> GlobalStrings;
+  std::unique_ptr<llvm::ExecutionEngine> engine;
   auto &Ctx = M.getContext();
+  
+  // Get codec
+  llvm::SMDiagnostic mod_err;
+  // TODO: use flag instead of hardcoded path
+  unique_ptr<Module> codec = parseIRFile("codec.bc", mod_err, Ctx);
+  if (!codec)
+    mod_err.print("Unable to parse BC file", errs());
+  // Check if we have an decoding function
+  assert(codec->getFunction("encode") && "Encoding function not found");
+
+  // Initialize exec engine
+  std::string eng_err;
+  engine.reset(llvm::EngineBuilder(llvm::CloneModule(*codec))
+                   .setEngineKind(llvm::EngineKind::Interpreter)
+                   .setErrorStr(&eng_err)
+                   .create());
+  assert(engine && "Failed to initialize execution engine.");
 
   // Encode all global strings
   for (GlobalVariable &Glob : M.globals()) {
@@ -153,21 +167,12 @@ vector<GlobalString *> encodeGlobalStrings(Module &M) {
       if (!CDA->isString())
         continue;
 
-      // Extract raw string
-      StringRef StrVal = CDA->getAsString();
-      const char *Data = StrVal.begin();
-      const int Size = StrVal.size();
-
-      // Create encoded string variable. Constants are immutable so we must
-      // override with a new Constant.
-      char *NewData = EncodeString(Data, Size);
-      Constant *NewConst =
-          ConstantDataArray::getString(Ctx, StringRef(NewData, Size), false);
+      auto NewConst = EncodeString(engine, CDA, Ctx);
 
       // Overwrite the global value
       Glob.setInitializer(NewConst);
 
-      GlobalStrings.push_back(new GlobalString(&Glob, Size));
+      GlobalStrings.push_back(new GlobalString(&Glob, CDA->getAsCString().size()));
       Glob.setConstant(false);
     } else if (isa<ConstantStruct>(Initializer)) {
       // Handle structs
@@ -180,20 +185,13 @@ vector<GlobalString *> encodeGlobalStrings(Module &M) {
         if (!CDA || !CDA->isString())
           continue;
 
-        // Extract raw string
-        StringRef StrVal = CDA->getAsString();
-        const char *Data = StrVal.begin();
-        const int Size = StrVal.size();
-
         // Create encoded string variable
-        char *NewData = EncodeString(Data, Size);
-        Constant *NewConst =
-            ConstantDataArray::getString(Ctx, StringRef(NewData, Size), false);
+        Constant *NewConst = EncodeString(engine, CDA, Ctx);
 
         // Overwrite the struct member
         CS->setOperand(i, NewConst);
 
-        GlobalStrings.push_back(new GlobalString(&Glob, i, Size));
+        GlobalStrings.push_back(new GlobalString(&Glob, i, CDA->getAsString().size()));
         Glob.setConstant(false);
       }
     }
@@ -204,6 +202,10 @@ vector<GlobalString *> encodeGlobalStrings(Module &M) {
 
 struct ObfStringPass : public PassInfoMixin<ObfStringPass> {
   PreservedAnalyses run(Module &M, ModuleAnalysisManager &MAM) {
+    // TODO: detect entry function if main not present
+    Function *MainFunc = M.getFunction("main");
+    assert(MainFunc);
+
     // Transform the strings
     auto GlobalStrings = encodeGlobalStrings(M);
 
@@ -212,7 +214,6 @@ struct ObfStringPass : public PassInfoMixin<ObfStringPass> {
     Function *DecodeStub = createDecodeStubFunc(M, GlobalStrings, DecodeFunc);
 
     // Inject a call to DecodeStub from main
-    Function *MainFunc = M.getFunction("main");
     createDecodeStubBlock(MainFunc, DecodeStub);
 
     return PreservedAnalyses::all();
@@ -235,3 +236,8 @@ llvmGetPassPluginInfo() {
                 });
           }};
 }
+
+/* char ObfStringPass::ID = 0;
+
+// Register the pass 
+static RegisterPass<ObfStringPass> X("obfstring", "Obfuscate strings"); */

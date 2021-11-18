@@ -1,5 +1,4 @@
 add_library(ObfStringPass MODULE
-    # List your source files here.
     obfstring.cpp
 )
 

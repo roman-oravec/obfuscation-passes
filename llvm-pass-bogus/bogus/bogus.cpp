@@ -206,6 +206,9 @@ bool BogusFlowPass::doF(Module &M){
     (*i)->eraseFromParent(); // erase the branch
   }
 
+  for (auto i = toDelete.begin(); i != toDelete.end(); ++i){
+    (*i)->eraseFromParent();
+  }
   return true;
 } // doF
 
