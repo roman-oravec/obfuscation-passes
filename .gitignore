@@ -13,3 +13,5 @@
 **/.vscode
 *.dot
 *.txt
+
+!codec*
