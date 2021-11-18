@@ -29,7 +29,12 @@ namespace {
 
     Value *SubAdd(BinaryOperator *BinOp);
     Value *SubAdd2(BinaryOperator *BinOp);
+    Value *SubAdd3(BinaryOperator *BinOp);
+
     Value *SubSub(BinaryOperator *BinOp);
+    Value *SubSub2(BinaryOperator *BinOp);
+    Value *SubSub3(BinaryOperator *BinOp);
+
     Value *SubXor(BinaryOperator *BinOp);
     Value *SubAnd(BinaryOperator *BinOp);
     Value *SubOr(BinaryOperator *BinOp);
@@ -59,19 +64,32 @@ namespace {
         int randNum = (*rng)();
         switch(Opcode){
           case Instruction::Add:
-            switch (randNum % 2){
+            switch (randNum % 3){
             case 0:
               ReplaceInstWithValue(BB.getInstList(), current, SubAdd(BinOp));
               break;
             case 1:
               ReplaceInstWithValue(BB.getInstList(), current, SubAdd2(BinOp));
               break;
+            case 2:
+              ReplaceInstWithValue(BB.getInstList(), current, SubAdd3(BinOp));
+              break;
             }
             ++MBACount;
             changed = true;
             break;
-          case Instruction::Sub: 
-            ReplaceInstWithValue(BB.getInstList(), current, SubSub(BinOp));
+          case Instruction::Sub:
+            switch (randNum % 3){
+            case 0:
+              ReplaceInstWithValue(BB.getInstList(), current, SubSub(BinOp));
+              break;
+            case 1:
+              ReplaceInstWithValue(BB.getInstList(), current, SubSub2(BinOp));
+              break;
+            case 2:
+              ReplaceInstWithValue(BB.getInstList(), current, SubSub3(BinOp));
+              break;
+            }
             ++MBACount;
             changed = true;
             break;
@@ -139,6 +157,33 @@ Value *MbaPass::SubAdd2(BinaryOperator *BinOp){
   return NewValue;
 }
 
+// Substitute x + y --> (x^y) + 2y − 2*(~x & y)
+Value *MbaPass::SubAdd3(BinaryOperator *BinOp){
+  errs() << "Using SubAdd3: x + y --> (x^y) + 2y − 2*(~x & y)\n";
+  Value *NewValue;
+  IRBuilder<> Builder(BinOp);
+  NewValue = Builder.CreateSub(
+    Builder.CreateAdd(
+      Builder.CreateXor(
+        BinOp->getOperand(0),
+        BinOp->getOperand(1)
+      ),
+      Builder.CreateMul(
+        ConstantInt::get(BinOp->getType(), 2),
+        BinOp->getOperand(1)
+      )
+    ),
+    Builder.CreateMul(
+      ConstantInt::get(BinOp->getType(), 2),
+      Builder.CreateAnd(
+        Builder.CreateNot(BinOp->getOperand(0)),
+        BinOp->getOperand(1)
+      )
+    )
+  );
+  return NewValue;
+}
+
 // Substitute x - y --> 2*(x & ~y) - (x ^ y)
 Value *MbaPass::SubSub(BinaryOperator *BinOp){
   Value *NewValue;
@@ -153,6 +198,44 @@ Value *MbaPass::SubSub(BinaryOperator *BinOp){
     Builder.CreateXor(
       BinOp->getOperand(0), 
       BinOp->getOperand(1))  
+  );
+  return NewValue;
+}
+
+// Substitute x - y --> ~(~x + y) & ~(~x + y) (from VMProtect)
+Value *MbaPass::SubSub2(BinaryOperator *BinOp){
+  Value *NewValue;
+  IRBuilder<> Builder(BinOp);
+  NewValue = Builder.CreateAnd(
+    Builder.CreateNeg(
+      Builder.CreateAdd(
+        Builder.CreateNeg(BinOp->getOperand(0)),
+        BinOp->getOperand(1)
+      )
+    ),
+    Builder.CreateNeg(
+      Builder.CreateAdd(
+        Builder.CreateNeg(BinOp->getOperand(0)),
+        BinOp->getOperand(1)
+      )
+    )
+  );
+  return NewValue;
+}
+
+// Substitite x - y --> x & ~y - ~x & y (Tigress)
+Value *MbaPass::SubSub3(BinaryOperator *BinOp){
+  Value *NewValue;
+  IRBuilder<> Builder(BinOp);
+  NewValue = Builder.CreateSub(
+    Builder.CreateAnd(
+      BinOp->getOperand(0),
+      Builder.CreateNot(BinOp->getOperand(1))
+    ),
+    Builder.CreateAnd(
+      Builder.CreateNot(BinOp->getOperand(0)),
+      BinOp->getOperand(1)
+    )
   );
   return NewValue;
 }
