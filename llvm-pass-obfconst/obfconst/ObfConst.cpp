@@ -44,17 +44,11 @@ namespace {
         // Iterate over operands
           for (size_t i = 0; i < Inst.getNumOperands(); ++i) {
             if (Constant *C = isValidCandidateOperand(Inst.getOperand(i))) {
-              std::stringstream stream;
-              stream << std::hex << C->getUniqueInteger().getLimitedValue();
-              std::string result(stream.str());
-              errs() << "Found an integer: 0x" << result << "\n";
-
               if (Value *New_val = replaceConst(Inst, C)){
                 Inst.setOperand(i, New_val);
                 modified = true;
-                errs() << "Replace with new value: " << New_val << "\n";
               } else {
-                errs() << "ObfConstPass: could not rand pick a variable for replacement\n";
+                  errs() << "ObfConstPass: could not rand pick a variable for replacement\n";
               }
             }
           }
@@ -73,31 +67,35 @@ namespace {
       auto &ctx = Inst.getParent()->getContext();
       Type *i32_type = llvm::IntegerType::getInt32Ty(ctx);
       uint32_t mod = static_cast<long>(UINT16_MAX)+1;
+
+      IRBuilder<NoFolder> Builder(&Inst);
+      //Value *newC = Builder.CreateZExtOrBitCast(C, i32_type, "newC");
       
-      uint32_t a = dist(rng);
+      uint32_t a_inv = 0;
+      uint32_t a;
+      while (a_inv == 0){
+        a = dist(rng);
       if (a % 2 == 0){
         a = a / 2;
       }
+        a_inv = boost::integer::mod_inverse(static_cast<long>(a), static_cast<long>(mod));
+      }
+
       uint32_t b = dist(rng);
       uint32_t x = dist(rng);
       uint32_t y = dist(rng);
 
-      uint64_t a_inv = boost::integer::mod_inverse(static_cast<long>(a), static_cast<long>(mod));
-      errs() << "\n" << "a_inv= " << a_inv << "\n";
-
-      Constant *constA = ConstantInt::get(i32_type, a, false);
-      Constant *constB = ConstantInt::get(i32_type, b, false);
-      Constant *constX = ConstantInt::get(i32_type, x, false);
-      Constant *constY = ConstantInt::get(i32_type, y, false);
-
-      IRBuilder<NoFolder> Builder(&Inst);
+      Constant *constA = ConstantInt::get(i32_type, a);
+      Constant *constB = ConstantInt::get(i32_type, b);
+      Constant *constX = ConstantInt::get(i32_type, x);
+      Constant *constY = ConstantInt::get(i32_type, y);
 
       // fx = ax + b (mod uint32_max)
       uint32_t fC_ax = a*C->getUniqueInteger().getLimitedValue();
       errs() << "\n" << "fC_ax= " << fC_ax << "\n";
       
       Value *fC = Builder.CreateAdd(
-        ConstantInt::get(i32_type, fC_ax, false),
+        ConstantInt::get(i32_type, fC_ax),
         constB);
       fC->setName("fC");
       
@@ -113,24 +111,23 @@ namespace {
       // g(E + f(C)) = C
       // g(x) = a_inv*(E + f(C)) + (-a_inv * b)
       uint64_t g_b = (-a_inv*b) % mod;
-      errs() << "\n" << "g_b= " << g_b << "\n";
+      errs() << "\n" << "a_inv: " << a_inv << "\ng_b= " << g_b << "\n";
       
       Value *E_fC = Builder.CreateAdd(E, fC);
       E_fC->setName("E_fC");
 
       Value *NewVal = Builder.CreateAdd(
         Builder.CreateMul(
-          ConstantInt::get(i32_type, a_inv, false), E_fC
+          ConstantInt::get(i32_type, a_inv), E_fC
         ),
-        ConstantInt::get(i32_type, g_b, false)
+        ConstantInt::get(i32_type, g_b)
       );
 
-      errs() << ConstantInt::get(i32_type, g_b, false)->getUniqueInteger() << '\n';
+      errs() << ConstantInt::get(i32_type, g_b)->getUniqueInteger() << '\n';
       NewVal->setName("NewVal");
 
-      Value *res = Builder.CreateURem(NewVal, ConstantInt::get(i32_type, mod, false));
+      Value *res = Builder.CreateURem(NewVal, ConstantInt::get(i32_type, mod));
       errs() << "a= " << a << "\n" << "b= " << b  << '\n';
-      errs() << "C= " << C->getUniqueInteger().getLimitedValue() << "\n";
       return res;
     }
 
@@ -147,7 +144,6 @@ namespace {
       }
     }
 
-    // Obfuscate only constants other than 0 and 1
     Constant *isValidCandidateOperand(Value *V) {
       Constant *C;
       //errs() << "Checking operand: " << V << "\n";
@@ -159,15 +155,18 @@ namespace {
       if(!C->getType()->isIntegerTy()) return nullptr;
       // Ignore 1 
       if (C->getUniqueInteger().getLimitedValue() == 1) return nullptr;
-      //errs() << "It is valid\n";
+      if (C->getUniqueInteger().isNegative()) return nullptr;
+      if (C->getUniqueInteger().getLimitedValue() > UINT16_MAX) return nullptr;
+      if (C->getType()->getScalarSizeInBits() != 32) return nullptr;
+      errs() << "Value: " << C->getUniqueInteger().getLimitedValue() << "  size: in bits: " << C->getType()->getScalarSizeInBits() << "\n ";
       return C;
     }
 
-
+    // Possibly use this instead of random numbers
     void registerInteger(Value &V) {
       if (V.getType()->isIntegerTy()){
         IntegerVect.push_back(&V);
-        errs() << "Registering integer " << V << "\n";
+        //errs() << "Registering integer " << V << "\n";
       }
     }
 

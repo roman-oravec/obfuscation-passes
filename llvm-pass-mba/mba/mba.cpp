@@ -1,5 +1,7 @@
 #define DEBUG_TYPE "mba"
 
+#include <random>
+
 //TODO build LLVM with stats enabled and try this
 #include "llvm/ADT/Statistic.h"
 STATISTIC(MBACount, "The number of substituted instructions with MBA");
@@ -48,9 +50,10 @@ namespace {
     Value *SubOr3(BinaryOperator *BinOp);
 
     virtual bool runOnBasicBlock(BasicBlock &BB) {
-      auto rng = BB.getParent()->getParent()->createRNG(this);
-      
-      //errs() << "Generated random number: " << randNum << '\n';
+      //auto rng = BB.getParent()->getParent()->createRNG(this);
+      std::random_device dev;
+      std::mt19937 rng(dev());
+      std::uniform_int_distribution<std::mt19937::result_type> dist(1,3);
       
       bool changed = false;
       for (auto current = BB.begin(), last = BB.end(); current != last; current++){
@@ -69,10 +72,10 @@ namespace {
           continue;
         
         
-        int randNum = (*rng)();
+        int randNum = dist(rng);
         switch(Opcode){
           case Instruction::Add:
-            switch (randNum % 3){
+            switch (randNum){
             case 0:
               ReplaceInstWithValue(BB.getInstList(), current, SubAdd(BinOp));
               break;
@@ -87,7 +90,7 @@ namespace {
             changed = true;
             break;
           case Instruction::Sub:
-            switch (randNum % 3){
+            switch (randNum){
             case 0:
               ReplaceInstWithValue(BB.getInstList(), current, SubSub(BinOp));
               break;
@@ -102,7 +105,7 @@ namespace {
             changed = true;
             break;
           case Instruction::Xor:
-            switch (randNum % 3){
+            switch (randNum){
             case 0:
               ReplaceInstWithValue(BB.getInstList(), current, SubXor(BinOp));
               break;
@@ -117,7 +120,7 @@ namespace {
             changed = true;
             break;
           case Instruction::And:
-            switch (randNum % 3){
+            switch (randNum){
             case 0:
               ReplaceInstWithValue(BB.getInstList(), current, SubAnd(BinOp));
               break;
@@ -132,7 +135,7 @@ namespace {
             changed = true;
             break;
           case Instruction::Or:
-          switch (randNum % 3){
+          switch (randNum){
             case 0:
               ReplaceInstWithValue(BB.getInstList(), current, SubOr(BinOp));
               break;

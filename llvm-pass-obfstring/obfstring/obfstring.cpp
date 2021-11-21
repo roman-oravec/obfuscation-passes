@@ -1,3 +1,5 @@
+// Based on https://github.com/tsarpaul/llvm-string-obfuscator
+
 #include "llvm/IR/Constants.h"
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/PassManager.h"
