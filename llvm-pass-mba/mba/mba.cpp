@@ -53,7 +53,7 @@ namespace {
       //auto rng = BB.getParent()->getParent()->createRNG(this);
       std::random_device dev;
       std::mt19937 rng(dev());
-      std::uniform_int_distribution<std::mt19937::result_type> dist(1,3);
+      std::uniform_int_distribution<std::mt19937::result_type> dist(0,2);
       
       bool changed = false;
       for (auto current = BB.begin(), last = BB.end(); current != last; current++){
@@ -92,12 +92,15 @@ namespace {
           case Instruction::Sub:
             switch (randNum){
             case 0:
+              errs() << "Using SubSub" << '\n';
               ReplaceInstWithValue(BB.getInstList(), current, SubSub(BinOp));
               break;
             case 1:
+            errs() << "Using SubSub2" << '\n';
               ReplaceInstWithValue(BB.getInstList(), current, SubSub2(BinOp));
               break;
             case 2:
+              errs() << "Using SubSub3" << '\n';
               ReplaceInstWithValue(BB.getInstList(), current, SubSub3(BinOp));
               break;
             }
@@ -107,12 +110,15 @@ namespace {
           case Instruction::Xor:
             switch (randNum){
             case 0:
+              errs() << "Using SubXor" << '\n';
               ReplaceInstWithValue(BB.getInstList(), current, SubXor(BinOp));
               break;
             case 1:
+              errs() << "Using SubXor2" << '\n';
               ReplaceInstWithValue(BB.getInstList(), current, SubXor2(BinOp));
               break;
             case 2:
+              errs() << "Using SubXor3" << '\n';
               ReplaceInstWithValue(BB.getInstList(), current, SubXor3(BinOp));
               break;
             }
@@ -122,12 +128,15 @@ namespace {
           case Instruction::And:
             switch (randNum){
             case 0:
+              errs() << "Using SubAnd" << '\n';
               ReplaceInstWithValue(BB.getInstList(), current, SubAnd(BinOp));
               break;
             case 1:
+              errs() << "Using SubAnd2" << '\n';
               ReplaceInstWithValue(BB.getInstList(), current, SubAnd2(BinOp));
               break;
             case 2:
+              errs() << "Using SubAnd3" << '\n';
               ReplaceInstWithValue(BB.getInstList(), current, SubAnd3(BinOp)); 
               break;
             }
@@ -374,15 +383,17 @@ Value *MbaPass::SubAnd2(BinaryOperator *BinOp){
   return NewValue;
 }
 
-// Substitute x & y --> (x ^ y) + y + (x & ~y)
+// Substitute x & y --> -(x ^ y) + y + (x & ~y)
 Value *MbaPass::SubAnd3(BinaryOperator *BinOp){
   Value *NewValue;
   IRBuilder<> Builder(BinOp);
   NewValue = Builder.CreateAdd(
     Builder.CreateAdd(
-      Builder.CreateXor(
+      Builder.CreateNeg(
+        Builder.CreateXor(
         BinOp->getOperand(0),
         BinOp->getOperand(1)
+        )
       ),
       BinOp->getOperand(1)
     ),
