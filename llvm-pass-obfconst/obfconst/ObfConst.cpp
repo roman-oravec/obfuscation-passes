@@ -1,4 +1,5 @@
-//#include "llvm/IR/LegacyPassManager.h"
+// Based on https://blog.quarkslab.com/turning-regular-code-into-atrocities-with-llvm.html
+
 #include "llvm/Pass.h"
 #include "llvm/IR/Function.h"
 #include "llvm/IR/Constants.h"
@@ -63,13 +64,12 @@ namespace {
     Value* replaceConst(Instruction &Inst, Constant *C){
       std::random_device dev;
       std::mt19937 rng(dev());
-      std::uniform_int_distribution<std::mt19937::result_type> dist(1,UINT16_MAX);
+      std::uniform_int_distribution<std::mt19937::result_type> dist(1,INT32_MAX);
       auto &ctx = Inst.getParent()->getContext();
-      Type *i32_type = llvm::IntegerType::getInt32Ty(ctx);
-      uint32_t mod = static_cast<long>(UINT16_MAX)+1;
+      Type *i32_type = llvm::IntegerType::getInt64Ty(ctx);
+      uint32_t mod = static_cast<long>(INT32_MAX)+1;
 
       IRBuilder<NoFolder> Builder(&Inst);
-      //Value *newC = Builder.CreateZExtOrBitCast(C, i32_type, "newC");
       
       uint32_t a_inv = 0;
       uint32_t a;
@@ -126,7 +126,8 @@ namespace {
       errs() << ConstantInt::get(i32_type, g_b)->getUniqueInteger() << '\n';
       NewVal->setName("NewVal");
 
-      Value *res = Builder.CreateURem(NewVal, ConstantInt::get(i32_type, mod));
+      Value *res1 = Builder.CreateURem(NewVal, ConstantInt::get(i32_type, mod));
+      Value *res = Builder.CreateZExtOrTrunc(res1, llvm::IntegerType::getInt32Ty(ctx), "Result");
       errs() << "a= " << a << "\n" << "b= " << b  << '\n';
       return res;
     }
@@ -150,15 +151,14 @@ namespace {
       // Is it a constant (== literal)?
       if (!(C = dyn_cast<Constant>(V))) return nullptr;
       // Ignore 0
-      if (C->isNullValue()) return nullptr;
+      //if (C->isNullValue()) return nullptr;
       // We found a constant, check if it's an integer
       if(!C->getType()->isIntegerTy()) return nullptr;
       // Ignore 1 
-      if (C->getUniqueInteger().getLimitedValue() == 1) return nullptr;
+      //if (C->getUniqueInteger().getLimitedValue() == 1) return nullptr;
       if (C->getUniqueInteger().isNegative()) return nullptr;
-      if (C->getUniqueInteger().getLimitedValue() > UINT16_MAX) return nullptr;
       if (C->getType()->getScalarSizeInBits() != 32) return nullptr;
-      errs() << "Value: " << C->getUniqueInteger().getLimitedValue() << "  size: in bits: " << C->getType()->getScalarSizeInBits() << "\n ";
+      errs() << "Value: " << C->getUniqueInteger().getLimitedValue() << "\n ";
       return C;
     }
 
