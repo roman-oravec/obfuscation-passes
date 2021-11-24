@@ -29,10 +29,8 @@ namespace {
     BasicBlock *createAltered(BasicBlock *basicBlock, 
     const Twine &Name, Function *F);
     bool doF(Module &M);
-    Value *getSymOP(Instruction *BBi, Module &M, Value *arg);
-    Value *getMBAOP(Module &M, Instruction *inst);
-
-    //void findIntegers(Module &M);
+    Value *getSymOP(Module &M, Instruction *inst, Value *arg);
+    Value *getSimpleOP(Module &M, Instruction *inst, std::vector<Value *> &argVec);
 
     virtual bool runOnFunction(Function &F) {
       Bogus(F);
@@ -157,25 +155,10 @@ BasicBlock *BogusFlowPass::createAltered(BasicBlock *basicBlock,
 bool BogusFlowPass::doF(Module &M){
   std::random_device dev;
   std::mt19937 rng(dev());
-  std::uniform_int_distribution<std::mt19937::result_type> dist(1,INT32_MAX);
-  Type *i32_type = Type::getInt32Ty(M.getContext());
-
-  Value * x1 =ConstantInt::get(Type::getInt32Ty(M.getContext()), 0, false);
-  Value * y1 =ConstantInt::get(Type::getInt32Ty(M.getContext()), 0, false);
-
-  GlobalVariable 	* x = new GlobalVariable(M, Type::getInt32Ty(M.getContext()), false,
-      GlobalValue::LinkOnceAnyLinkage, (Constant * )x1, "x");
-  GlobalVariable 	* y = new GlobalVariable(M, Type::getInt32Ty(M.getContext()), false,
-      GlobalValue::LinkOnceAnyLinkage, (Constant * )y1, "y");
-  
-  x->setInitializer(ConstantInt::get(i32_type, dist(rng)));
-  y->setInitializer(ConstantInt::get(i32_type, dist(rng)));
-
+  std::uniform_int_distribution<std::mt19937::result_type> dist(0,1);
   std::vector<Instruction*> toEdit, toDelete;
-  BinaryOperator *op,*op1 = NULL;
-  LoadInst * opX , * opY;
-  ICmpInst * condition, * condition2;
-  Value *argValue;
+  std::vector<Value *> argVec;
+  Value *argValue, *symVal, *pred;
   Type* argType;
   
 
@@ -200,41 +183,29 @@ bool BogusFlowPass::doF(Module &M){
 
   // Replace all the branches found 
   for (auto BBi = toEdit.begin(); BBi != toEdit.end(); ++BBi){
-    //if y < 10 || x*(x-1) % 2 == 0
-    opX = new LoadInst((Value *)x, "x", (*BBi));
-    opY = new LoadInst((Value *)y, "y", (*BBi));
-
-    IRBuilder<> Builder((*BBi)->getParent());
-    Value *pred1 = Builder.CreateICmpSLT(opY, ConstantInt::get(i32_type, 10));
-    Value *pred2 = Builder.CreateICmpEQ( 
-      Builder.CreateURem(
-        Builder.CreateMul(
-          opX, Builder.CreateSub(opX, ConstantInt::get(i32_type, 1))
-        ),
-        ConstantInt::get(i32_type, 2)
-      ),
-      ConstantInt::get(i32_type, 0)
-    );
-    Value *predBasic = Builder.CreateOr(pred1, pred2);
-
-    // Check if function has an integer argument
+    // Check if function has an integer arguments
+    // and store them in argVec
     Function *F = (*BBi)->getParent()->getParent();
     for (Function::arg_iterator argIt = F->arg_begin(); argIt != F->arg_end(); ++argIt){
       argValue = &*argIt;
       argType = argValue->getType();
       if(argType->isIntegerTy()){
-        break;
+        if (argType->getIntegerBitWidth() == 32){
+          argVec.push_back(argValue);
+        }
+        /* if (isa<ConstantInt>(argValue))
+        symVal = argValue; */
+        if (argVec.size() >= 2) break; // Don't need more than 2 int args
       }
     }
 
     // Try to construct symbolic OP using arrays
-    // Use MBA OP if it fails
-    Value *pred;
-    Value *predSym = getSymOP(*BBi, M, argValue);
-    if (predSym){
-      pred = predSym;
+    // Use Simple OP if it fails
+    
+    if (!argVec.empty() && dist(rng )){
+      pred = getSymOP(M, *BBi, argVec[0]);
     } else {
-      pred = getMBAOP(M, *BBi);
+      pred = getSimpleOP(M, *BBi, argVec);
     }
 
     // Create BranchInst with successors of original BranchInst (BBi),
@@ -253,30 +224,39 @@ bool BogusFlowPass::doF(Module &M){
   return true;
 } // doF
 
-Value *BogusFlowPass::getMBAOP(Module &M, Instruction *inst){
+Value *BogusFlowPass::getSimpleOP(Module &M, Instruction *inst, std::vector<Value *> &argVec){
   std::random_device dev;
   std::mt19937 rng(dev());
   std::uniform_int_distribution<std::mt19937::result_type> dist(1,INT8_MAX);
-  std::uniform_int_distribution<std::mt19937::result_type> randMBA(1,4);
+  std::uniform_int_distribution<std::mt19937::result_type> randMBA(1,4); // for OP selection
   Type *i32_type = Type::getInt32Ty(M.getContext());
-  LoadInst * opX , * opY;
+  IRBuilder<> Builder(inst->getParent());
 
-  Value * x1 =ConstantInt::get(Type::getInt32Ty(M.getContext()), 0, false);
-  Value * y1 =ConstantInt::get(Type::getInt32Ty(M.getContext()), 0, false);
+  Value * x1 =ConstantInt::get(i32_type, 0);
+  Value * y1 =ConstantInt::get(i32_type, 0);
 
-  GlobalVariable 	* x = new GlobalVariable(M, Type::getInt32Ty(M.getContext()), false,
+  GlobalVariable 	* x = new GlobalVariable(M, i32_type, false,
       GlobalValue::LinkOnceAnyLinkage, (Constant * )x1, "x");
-  GlobalVariable 	* y = new GlobalVariable(M, Type::getInt32Ty(M.getContext()), false,
+  GlobalVariable 	* y = new GlobalVariable(M, i32_type, false,
       GlobalValue::LinkOnceAnyLinkage, (Constant * )y1, "y");
   
   x->setInitializer(ConstantInt::get(i32_type, dist(rng)));
   y->setInitializer(ConstantInt::get(i32_type, dist(rng)));
 
-  //if y < 10 || x*(x-1) % 2 == 0
-  opX = new LoadInst((Value *)x, "x", (inst));
-  opY = new LoadInst((Value *)y, "y", (inst));
+  // Try to use function arguments instead of globals
+  Value *opX, *opY;
+  if(argVec.size() > 1){
+    // Use REM (modulus) to prevent type overflow 
+    opX = Builder.CreateSRem(argVec[0], ConstantInt::get(i32_type, INT8_MAX), "X_REM");
+    opY = Builder.CreateSRem(argVec[1], ConstantInt::get(i32_type, INT8_MAX), "Y_REM");
+  } else if (argVec.size() == 1) {
+    opX = Builder.CreateSRem(argVec[0], ConstantInt::get(i32_type, INT8_MAX), "X_REM");
+    opY = Builder.CreateLoad((Value *)y, "y"); 
+  } else {
+    opX = Builder.CreateLoad((Value *)x, "x");
+    opY = Builder.CreateLoad((Value *)y, "y");
+  }
 
-  IRBuilder<> Builder(inst->getParent());
   short rand = randMBA(rng);
   Value *res = nullptr;
   switch (rand)
@@ -331,12 +311,10 @@ Value *BogusFlowPass::getMBAOP(Module &M, Instruction *inst){
 }
 
 // Based on https://github.com/hxuhack/symobfuscator-deprecated-
-Value *BogusFlowPass::getSymOP(Instruction *inst, Module &M, Value *arg){
-  IRBuilder<> Builer(inst);
+Value *BogusFlowPass::getSymOP(Module &M, Instruction *inst, Value *arg){
+  IRBuilder<> Builder(inst);
   Type* argType = arg->getType();
-  if(!argType->isIntegerTy()){
-    return nullptr;
-  }
+
   unsigned size = 8;
   const DataLayout &DL = M.getDataLayout();
   ConstantInt* i0_32 = (ConstantInt*) ConstantInt::getSigned(Type::getInt32Ty(M.getContext()), 0);
@@ -383,17 +361,17 @@ Value *BogusFlowPass::getSymOP(Instruction *inst, Module &M, Value *arg){
     storeVec2.push_back(new StoreInst(ci, gepVec2[i], inst));
   }
 
-  Value* allocaInst = Builer.CreateAlloca(argType, DL.getAllocaAddrSpace(), nullptr, "allocaInst"); 
-  Value* loadInst = Builer.CreateLoad(allocaInst, "loadInst"); 
+  Value* allocaInst = Builder.CreateAlloca(argType, DL.getAllocaAddrSpace(), nullptr, "allocaInst"); 
+  Value* loadInst = Builder.CreateLoad(allocaInst, "loadInst"); 
  
   // Remainder instruction
   Value *remInst;
   if(((IntegerType*) argType)->getBitWidth() != 64){
     // Cast loadInst to i64
-    Value* load64 = Builer.CreateSExtOrBitCast(loadInst, Type::getInt64Ty(M.getContext()), "load64"); 
-    remInst = Builer.CreateSRem(load64, size_i64); 
+    Value* load64 = Builder.CreateSExtOrBitCast(loadInst, Type::getInt64Ty(M.getContext()), "load64"); 
+    remInst = Builder.CreateSRem(load64, size_i64); 
     } else{
-      remInst = Builer.CreateSRem(loadInst, size_i64); 
+      remInst = Builder.CreateSRem(loadInst, size_i64); 
     }
 
   // Load GEPs 
@@ -401,18 +379,18 @@ Value *BogusFlowPass::getSymOP(Instruction *inst, Module &M, Value *arg){
   vec1.push_back(i0_32);
   vec1.push_back(remInst);
   ArrayRef<Value*> arrRef1(vec1);
-  Value* gep1 = Builer.CreateInBoundsGEP((Value *) arr_alloc1, arrRef1, "idx_1");
+  Value* gep1 = Builder.CreateInBoundsGEP((Value *) arr_alloc1, arrRef1, "idx_1");
   LoadInst* load1 = new LoadInst(gep1, "", false, inst);
 
   std::vector<Value*> vec2;
   vec2.push_back(i0_32);
   vec2.push_back(load1);
   ArrayRef<Value*> arrRef2(vec2);
-  Value *gep2 = Builer.CreateInBoundsGEP((Value *) arr_alloc2, arrRef2, "idx_2");
+  Value *gep2 = Builder.CreateInBoundsGEP((Value *) arr_alloc2, arrRef2, "idx_2");
   LoadInst* load2 = new LoadInst(gep2, "", false, inst);
 
   // Compare arr1[i] == arr2[j]
-  Value* res = Builer.CreateICmpEQ(load2, load1, "ArrOpq");
+  Value* res = Builder.CreateICmpEQ(load2, load1, "ArrOpq");
   return res;
 }
 
