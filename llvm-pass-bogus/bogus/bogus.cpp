@@ -255,6 +255,12 @@ Value *BogusFlowPass::getSymOP(Instruction *inst, Module &M, Value *arg){
   if(!argType->isIntegerTy()){
     return nullptr;
   }
+  if (isa<ConstantInt>(arg)){
+    if (dyn_cast<ConstantInt>(arg)->getUniqueInteger().getLimitedValue() >= INT32_MAX){
+      errs() << "ARG TOO LARGE";
+      return nullptr;
+    }
+  }
 
   std::random_device dev;
   std::mt19937 rng(dev());
