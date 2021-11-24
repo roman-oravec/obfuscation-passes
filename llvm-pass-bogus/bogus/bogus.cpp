@@ -1,6 +1,6 @@
+// Pass based on Obfuscator-LLVM
 #define DEBUG_TYPE "bogus"
 
-//TODO build LLVM with stats enabled and try this
 #include "llvm/ADT/Statistic.h"
 #include "llvm/Pass.h"
 #include "llvm/IR/IRBuilder.h"
@@ -26,10 +26,12 @@ namespace {
 
     void Bogus(Function &F);
     void AddBogus(BasicBlock *basicBlock, Function &F);
-    BasicBlock *createAlteredi(BasicBlock *basicBlock, 
+    BasicBlock *createAltered(BasicBlock *basicBlock, 
     const Twine &Name, Function *F);
     bool doF(Module &M);
     Value *getSymOP(Instruction *BBi, Module &M, Value *arg);
+    Value *getMBAOP(Module &M, Instruction *inst);
+
     //void findIntegers(Module &M);
 
     virtual bool runOnFunction(Function &F) {
@@ -66,7 +68,7 @@ void BogusFlowPass::AddBogus(BasicBlock *basicBlock, Function &F){
     return;
   }
   BasicBlock *original = basicBlock->splitBasicBlock(i1, "original");
-  BasicBlock *altered = createAlteredi(original, "copy", &F);
+  BasicBlock *altered = createAltered(original, "copy", &F);
 
   // Now that all the blocks are created,
   // we modify the terminators to adjust the control flow.
@@ -107,7 +109,7 @@ void BogusFlowPass::AddBogus(BasicBlock *basicBlock, Function &F){
   BranchInst::Create(originalpart2, altered, (Value *)condition2, original);
 }
 
-BasicBlock *BogusFlowPass::createAlteredi(BasicBlock *basicBlock, 
+BasicBlock *BogusFlowPass::createAltered(BasicBlock *basicBlock, 
     const Twine &Name = "altered", Function *F = 0){
   ValueToValueMapTy VMap;
   BasicBlock * altered = llvm::CloneBasicBlock (basicBlock, VMap, Name, F);
@@ -215,21 +217,24 @@ bool BogusFlowPass::doF(Module &M){
     );
     Value *predBasic = Builder.CreateOr(pred1, pred2);
 
+    // Check if function has an integer argument
     Function *F = (*BBi)->getParent()->getParent();
     for (Function::arg_iterator argIt = F->arg_begin(); argIt != F->arg_end(); ++argIt){
-    argValue = &*argIt;
-    argType = argValue->getType();
-    if(argType->isIntegerTy()){
-      break;
+      argValue = &*argIt;
+      argType = argValue->getType();
+      if(argType->isIntegerTy()){
+        break;
+      }
     }
-  }
 
-    Value *predArr = getSymOP(*BBi, M, argValue);
+    // Try to construct symbolic OP using arrays
+    // Use MBA OP if it fails
     Value *pred;
-    if (predArr){
-      pred = predArr;
+    Value *predSym = getSymOP(*BBi, M, argValue);
+    if (predSym){
+      pred = predSym;
     } else {
-      pred = predBasic;
+      pred = getMBAOP(M, *BBi);
     }
 
     // Create BranchInst with successors of original BranchInst (BBi),
@@ -248,27 +253,94 @@ bool BogusFlowPass::doF(Module &M){
   return true;
 } // doF
 
+Value *BogusFlowPass::getMBAOP(Module &M, Instruction *inst){
+  std::random_device dev;
+  std::mt19937 rng(dev());
+  std::uniform_int_distribution<std::mt19937::result_type> dist(1,INT8_MAX);
+  std::uniform_int_distribution<std::mt19937::result_type> randMBA(1,4);
+  Type *i32_type = Type::getInt32Ty(M.getContext());
+  LoadInst * opX , * opY;
 
+  Value * x1 =ConstantInt::get(Type::getInt32Ty(M.getContext()), 0, false);
+  Value * y1 =ConstantInt::get(Type::getInt32Ty(M.getContext()), 0, false);
+
+  GlobalVariable 	* x = new GlobalVariable(M, Type::getInt32Ty(M.getContext()), false,
+      GlobalValue::LinkOnceAnyLinkage, (Constant * )x1, "x");
+  GlobalVariable 	* y = new GlobalVariable(M, Type::getInt32Ty(M.getContext()), false,
+      GlobalValue::LinkOnceAnyLinkage, (Constant * )y1, "y");
+  
+  x->setInitializer(ConstantInt::get(i32_type, dist(rng)));
+  y->setInitializer(ConstantInt::get(i32_type, dist(rng)));
+
+  //if y < 10 || x*(x-1) % 2 == 0
+  opX = new LoadInst((Value *)x, "x", (inst));
+  opY = new LoadInst((Value *)y, "y", (inst));
+
+  IRBuilder<> Builder(inst->getParent());
+  short rand = randMBA(rng);
+  Value *res = nullptr;
+  switch (rand)
+  {
+  case 1: //7y^2 - 1 != x
+    res = Builder.CreateICmpNE(
+      Builder.CreateSub(
+        Builder.CreateMul(
+          ConstantInt::get(i32_type, 7),
+          Builder.CreateMul(opY, opY)
+          ),
+          ConstantInt::get(i32_type, 1)
+      ), opX
+    );
+    break;
+  case 2: // (x^2 + 1) % 7 != 0
+    res = Builder.CreateICmpNE(
+      Builder.CreateSRem(
+        Builder.CreateAdd(
+          Builder.CreateMul(opX, opX), 
+          ConstantInt::get(i32_type, 1)
+        ),
+        ConstantInt::get(i32_type, 7)
+      ), ConstantInt::get(i32_type, 0)
+    );
+    break;
+  case 3: // (x^2 + x + 7) % 81 != 0
+    res = Builder.CreateICmpNE(
+      Builder.CreateSRem(
+        Builder.CreateAdd(
+          Builder.CreateAdd(
+            Builder.CreateMul(opX, opX), opX),
+           ConstantInt::get(i32_type, 7)), 
+           ConstantInt::get(i32_type, 81)), 
+        ConstantInt::get(i32_type, 0)
+        );
+    break;
+  case 4: // (4x^2 + 4) % 19 != 0
+    res = res = Builder.CreateICmpNE(
+      Builder.CreateSRem(
+        Builder.CreateAdd(
+          Builder.CreateMul(
+            Builder.CreateMul(opX, opX),
+            ConstantInt::get(i32_type, 4)),
+           ConstantInt::get(i32_type, 4)), 
+           ConstantInt::get(i32_type, 19)), 
+        ConstantInt::get(i32_type, 0)
+        );
+    break;
+  }
+  return res;
+}
+
+// Based on https://github.com/hxuhack/symobfuscator-deprecated-
 Value *BogusFlowPass::getSymOP(Instruction *inst, Module &M, Value *arg){
   IRBuilder<> Builer(inst);
   Type* argType = arg->getType();
   if(!argType->isIntegerTy()){
     return nullptr;
   }
-  if (isa<ConstantInt>(arg)){
-    if (dyn_cast<ConstantInt>(arg)->getUniqueInteger().getLimitedValue() >= INT32_MAX){
-      errs() << "ARG TOO LARGE";
-      return nullptr;
-    }
-  }
-
-  std::random_device dev;
-  std::mt19937 rng(dev());
-  int ARR_MAX = 3;
-  std::uniform_int_distribution<std::mt19937::result_type> dist(1,ARR_MAX);
-  unsigned size = 8; //dist(rng);
-
+  unsigned size = 8;
   const DataLayout &DL = M.getDataLayout();
+  ConstantInt* i0_32 = (ConstantInt*) ConstantInt::getSigned(Type::getInt32Ty(M.getContext()), 0);
+  ConstantInt *size_i64 = dyn_cast<ConstantInt>(ConstantInt::getSigned(Type::getInt64Ty(M.getContext()), size));
   
   // Define arrays
   ArrayType* arr_type1 = ArrayType::get(Type::getInt64Ty(M.getContext()), size) ;
@@ -277,8 +349,7 @@ Value *BogusFlowPass::getSymOP(Instruction *inst, Module &M, Value *arg){
   AllocaInst* arr_alloc1 = new AllocaInst(arr_type1, DL.getAllocaAddrSpace(),"arr1", inst) ;
   AllocaInst* arr_alloc2 = new AllocaInst(arr_type2, DL.getAllocaAddrSpace(),"arr2", inst) ;
 
-
-  ConstantInt* i0_32 = (ConstantInt*) ConstantInt::getSigned(Type::getInt32Ty(M.getContext()), 0);
+  // Initialize arrays
   std::vector<Instruction *> gepVec1;
   std::vector<StoreInst *> storeVec1;
   std::vector<Instruction *> gepVec2;
@@ -312,37 +383,35 @@ Value *BogusFlowPass::getSymOP(Instruction *inst, Module &M, Value *arg){
     storeVec2.push_back(new StoreInst(ci, gepVec2[i], inst));
   }
 
-  Value* allocaInst = Builer.CreateAlloca(argType, DL.getAllocaAddrSpace(), nullptr, "allocaInst"); //new AllocaInst(argType, DL.getAllocaAddrSpace(), "allocaInst", inst) ;
-  //StoreInst* jSI = new StoreInst(arg, allocaInst, inst) ;
-  Value* loadInst = Builer.CreateLoad(allocaInst, "loadInst"); //new LoadInst(allocaInst, "loadInst", inst) ;
-
-  ConstantInt *size_i64 = dyn_cast<ConstantInt>(ConstantInt::getSigned(Type::getInt64Ty(M.getContext()), size));
+  Value* allocaInst = Builer.CreateAlloca(argType, DL.getAllocaAddrSpace(), nullptr, "allocaInst"); 
+  Value* loadInst = Builer.CreateLoad(allocaInst, "loadInst"); 
  
+  // Remainder instruction
   Value *remInst;
   if(((IntegerType*) argType)->getBitWidth() != 64){
     // Cast loadInst to i64
-    //errs() << "argType bitwidth: " << ((IntegerType*) argType)->getBitWidth() << '\n';
     Value* load64 = Builer.CreateSExtOrBitCast(loadInst, Type::getInt64Ty(M.getContext()), "load64"); 
-    remInst = Builer.CreateSRem(load64, size_i64); //BinaryOperator::Create(Instruction::SRem, load64, size_i64, "rem", inst);
+    remInst = Builer.CreateSRem(load64, size_i64); 
     } else{
-      remInst = Builer.CreateSRem(loadInst, size_i64); //BinaryOperator::Create(Instruction::SRem, loadInst, size_i64, "rem", inst);
+      remInst = Builer.CreateSRem(loadInst, size_i64); 
     }
 
+  // Load GEPs 
   std::vector<Value*> vec1;
   vec1.push_back(i0_32);
   vec1.push_back(remInst);
-  ArrayRef<Value*> l1AR(vec1);
-  //Instruction* gep1 = GetElementPtrInst::CreateInBounds((Value *) arr_alloc1, l1AR, "l1_arrayidx", inst);
-  Value* gep1 = Builer.CreateInBoundsGEP((Value *) arr_alloc1, l1AR, "idx_1");
+  ArrayRef<Value*> arrRef1(vec1);
+  Value* gep1 = Builer.CreateInBoundsGEP((Value *) arr_alloc1, arrRef1, "idx_1");
   LoadInst* load1 = new LoadInst(gep1, "", false, inst);
 
   std::vector<Value*> vec2;
   vec2.push_back(i0_32);
   vec2.push_back(load1);
-  ArrayRef<Value*> l2AR(vec2);
-  Instruction* l2EPI = GetElementPtrInst::CreateInBounds((Value *) arr_alloc2, l2AR, "idx_2", inst);
-  LoadInst* load2 = new LoadInst(l2EPI, "", false, inst);
+  ArrayRef<Value*> arrRef2(vec2);
+  Value *gep2 = Builer.CreateInBoundsGEP((Value *) arr_alloc2, arrRef2, "idx_2");
+  LoadInst* load2 = new LoadInst(gep2, "", false, inst);
 
+  // Compare arr1[i] == arr2[j]
   Value* res = Builer.CreateICmpEQ(load2, load1, "ArrOpq");
   return res;
 }
