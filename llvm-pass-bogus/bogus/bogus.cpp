@@ -201,7 +201,7 @@ bool BogusFlowPass::doF(Module &M){
 
     // Try to construct symbolic OP using arrays
     // Use Simple OP if it fails
-    
+    // TODO use deterministic RNG
     if (!argVec.empty() && dist(rng )){
       pred = getSymOP(M, *BBi, argVec[0]);
     } else {
@@ -361,8 +361,9 @@ Value *BogusFlowPass::getSymOP(Module &M, Instruction *inst, Value *arg){
     storeVec2.push_back(new StoreInst(ci, gepVec2[i], inst));
   }
 
-  Value* allocaInst = Builder.CreateAlloca(argType, DL.getAllocaAddrSpace(), nullptr, "allocaInst"); 
-  Value* loadInst = Builder.CreateLoad(allocaInst, "loadInst"); 
+  Value *allocaInst = Builder.CreateAlloca(argType, DL.getAllocaAddrSpace(), nullptr, "allocaInst"); 
+  Value *storeInst = Builder.CreateStore(arg, allocaInst);
+  Value *loadInst = Builder.CreateLoad(allocaInst, "loadInst"); 
  
   // Remainder instruction
   Value *remInst;
