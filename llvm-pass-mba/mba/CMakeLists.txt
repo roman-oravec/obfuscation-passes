@@ -1,6 +1,5 @@
 add_library(MbaPass MODULE
-    # List your source files here.
-    mba.cpp
+    Mba.cpp
 )
 
 # Use C++11 to compile our pass (i.e., supply -std=c++11).

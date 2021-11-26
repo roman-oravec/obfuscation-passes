@@ -226,7 +226,7 @@ main()
         // sha512/256
         "2c9fdbc0c90bdd87612ee8455474f9044850241dc105b1e8b94b8ddf5fac9148");
 
-    std::vector<char> million(1000000, 'a');
+    std::vector<char> million(1000000, 'a'); //more than 927031 --> segfault opaque
     million.push_back(0);
 
     expect(million.data(),

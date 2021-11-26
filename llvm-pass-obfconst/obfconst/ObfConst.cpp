@@ -15,13 +15,10 @@
 
 #include <boost/integer/mod_inverse.hpp>
 
-#include <sstream>
 #include <random>
 using namespace llvm;
 
 namespace {
-
-  using prime_type = uint32_t;
   
   class ObfConstPass : public BasicBlockPass {
     std::vector<Value *> IntegerVect;
@@ -66,7 +63,7 @@ namespace {
       std::mt19937 rng(dev());
       std::uniform_int_distribution<std::mt19937::result_type> dist(1,INT32_MAX);
       auto &ctx = Inst.getParent()->getContext();
-      Type *i32_type = llvm::IntegerType::getInt64Ty(ctx);
+      Type *i32_type = llvm::IntegerType::getInt32Ty(ctx); // TODO: 32 vs 64?
       uint32_t mod = static_cast<long>(INT32_MAX)+1;
 
       IRBuilder<NoFolder> Builder(&Inst);
