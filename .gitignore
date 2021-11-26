@@ -15,5 +15,6 @@
 *.txt
 **/angr
 
+!CMakeLists.txt
 !codec*
 !llvm-pass-mba/tests
