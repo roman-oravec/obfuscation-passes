@@ -12,6 +12,7 @@
 #include "llvm/Transforms/Utils/Cloning.h"
 #include <llvm/ExecutionEngine/Interpreter.h>
 #include <llvm/ExecutionEngine/GenericValue.h>
+#include <llvm/Pass.h>
 #include <typeinfo>
 
 using namespace std;
@@ -202,9 +203,12 @@ vector<GlobalString *> encodeGlobalStrings(Module &M) {
   return GlobalStrings;
 }
 
-struct ObfStringPass : public PassInfoMixin<ObfStringPass> {
-  PreservedAnalyses run(Module &M, ModuleAnalysisManager &MAM) {
-    // TODO: detect entry function if main not present
+struct ObfStringPass : public ModulePass {
+  static char ID;
+  ObfStringPass() : ModulePass(ID) {}
+
+  virtual bool runOnModule(Module &M) {
+    
     Function *MainFunc = M.getFunction("main");
     assert(MainFunc);
 
@@ -218,28 +222,12 @@ struct ObfStringPass : public PassInfoMixin<ObfStringPass> {
     // Inject a call to DecodeStub from main
     createDecodeStubBlock(MainFunc, DecodeStub);
 
-    return PreservedAnalyses::all();
+    return true;
+    }
   };
-};
 } // end anonymous namespace
 
-extern "C" ::llvm::PassPluginLibraryInfo LLVM_ATTRIBUTE_WEAK
-llvmGetPassPluginInfo() {
-  return {LLVM_PLUGIN_API_VERSION, "ObfStringPass", "v0.1",
-          [](PassBuilder &PB) {
-            PB.registerPipelineParsingCallback(
-                [](StringRef Name, ModulePassManager &MPM,
-                   ArrayRef<PassBuilder::PipelineElement>) {
-                  if (Name == "obfstring") {
-                    MPM.addPass(ObfStringPass());
-                    return true;
-                  }
-                  return false;
-                });
-          }};
-}
-
-/* char ObfStringPass::ID = 0;
+char ObfStringPass::ID = 0;
 
 // Register the pass 
-static RegisterPass<ObfStringPass> X("obfstring", "Obfuscate strings"); */
+static RegisterPass<ObfStringPass> X("obfstring", "Obfuscate strings");

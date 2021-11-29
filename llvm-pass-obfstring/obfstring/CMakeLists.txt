@@ -1,5 +1,5 @@
 add_library(ObfStringPass MODULE
-    obfstring.cpp
+    ObfString.cpp
 )
 
 # Use C++11 to compile our pass (i.e., supply -std=c++11).
