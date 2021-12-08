@@ -167,7 +167,7 @@ vector<GlobalString *> encodeGlobalStrings(Module &M) {
     // Check if its a string
     if (isa<ConstantDataArray>(Initializer)) {
       auto CDA = cast<ConstantDataArray>(Initializer);
-      if (!CDA->isString())
+      if (!CDA->isString() || !CDA->isCString())
         continue;
 
       auto NewConst = EncodeString(engine, CDA, Ctx);
@@ -185,7 +185,7 @@ vector<GlobalString *> encodeGlobalStrings(Module &M) {
                   // constant table!"
       for (unsigned int i = 0; i < Initializer->getNumOperands(); i++) {
         auto CDA = dyn_cast<ConstantDataArray>(CS->getOperand(i));
-        if (!CDA || !CDA->isString())
+        if (!CDA || !CDA->isString() || !CDA->isCString())
           continue;
 
         // Create encoded string variable

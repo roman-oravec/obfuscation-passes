@@ -8,6 +8,7 @@
 !*/
 
 **/build
+**/testing
 *.ll
 *.c
 **/.vscode
@@ -18,3 +19,10 @@
 !CMakeLists.txt
 !codec*
 !llvm-pass-mba/tests
+
+!./testing/sha
+!./testing/plusaes
+!./testing/qsort
+!./testing/bitcodeMetrics
+*.ll
+*.bc 

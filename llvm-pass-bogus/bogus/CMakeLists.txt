@@ -1,6 +1,6 @@
 add_library(BogusFlowPass MODULE
     # List your source files here.
-    bogus.cpp
+    Bogus.cpp
 )
 
 # Use C++11 to compile our pass (i.e., supply -std=c++11).

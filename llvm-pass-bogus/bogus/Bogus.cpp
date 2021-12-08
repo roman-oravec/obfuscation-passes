@@ -13,6 +13,8 @@
 #include "llvm/Transforms/Utils/Cloning.h"
 #include "llvm/IR/InstrTypes.h"
 #include "llvm/IR/InstIterator.h"
+#include "llvm/Transforms/IPO/PassManagerBuilder.h"
+#include "llvm/IR/LegacyPassManager.h"
 
 using namespace llvm;
 
@@ -315,7 +317,11 @@ Value *BogusFlowPass::getSymOP(Module &M, Instruction *inst, Value *arg){
   IRBuilder<> Builder(inst);
   Type* argType = arg->getType();
 
-  unsigned size = 8;
+  std::random_device dev;
+  std::mt19937 rng(dev());
+  std::uniform_int_distribution<std::mt19937::result_type> dist(5,10);
+  unsigned size = 8;//dist(rng);
+
   const DataLayout &DL = M.getDataLayout();
   ConstantInt* i0_32 = (ConstantInt*) ConstantInt::getSigned(Type::getInt32Ty(M.getContext()), 0);
   ConstantInt *size_i64 = dyn_cast<ConstantInt>(ConstantInt::getSigned(Type::getInt64Ty(M.getContext()), size));
@@ -391,7 +397,7 @@ Value *BogusFlowPass::getSymOP(Module &M, Instruction *inst, Value *arg){
   LoadInst* load2 = new LoadInst(gep2, "", false, inst);
 
   // Compare arr1[i] == arr2[j]
-  Value* res = Builder.CreateICmpEQ(load2, load1, "ArrOpq");
+  Value* res = Builder.CreateICmpNE(load2, size_i64, "ArrOpq");
   return res;
 }
 
