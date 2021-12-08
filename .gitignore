@@ -8,21 +8,33 @@
 !*/
 
 **/build
-**/testing
+**/orig_main
+note.txt
+**/android
+obf_MCS.sh
+#!**/testing
 *.ll
-*.c
+#*.c
 **/.vscode
 *.dot
 *.txt
-**/angr
+#**/angr
+**/__pycache__
+**/exploid
+**/tests 
+!codec.bc
+foo.c
+example.c
+**/llvm-pass-mba/tests
 
 !CMakeLists.txt
 !codec*
 !llvm-pass-mba/tests
 
-!./testing/sha
-!./testing/plusaes
-!./testing/qsort
-!./testing/bitcodeMetrics
+!./testing/sha/**
+!./testing/plusaes/**
+!./testing/qsort/**
+!./testing/bitcodeMetrics/**
 *.ll
 *.bc 
+!*.txt
