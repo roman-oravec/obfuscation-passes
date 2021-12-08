@@ -10,14 +10,13 @@
 #include "llvm/Passes/PassPlugin.h"
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/Transforms/Utils/Cloning.h"
-#include <llvm/ExecutionEngine/Interpreter.h>
 #include <llvm/ExecutionEngine/GenericValue.h>
+#include <llvm/ExecutionEngine/Interpreter.h>
 #include <llvm/Pass.h>
 #include <typeinfo>
 
 using namespace std;
 using namespace llvm;
-
 
 namespace {
 class GlobalString {
@@ -124,7 +123,8 @@ void createDecodeStubBlock(Function *F, Function *DecodeStubFunc) {
   Builder.CreateBr(&EntryBlock);
 }
 
-Constant *EncodeString(std::unique_ptr<ExecutionEngine> &engine, ConstantDataArray *CDA, LLVMContext &Ctx){
+Constant *EncodeString(std::unique_ptr<ExecutionEngine> &engine,
+                       ConstantDataArray *CDA, LLVMContext &Ctx) {
   std::string encStr = CDA->getAsCString().str();
   std::vector<llvm::GenericValue> args(1);
   args[0].PointerVal = (void *)encStr.c_str();
@@ -137,7 +137,7 @@ vector<GlobalString *> encodeGlobalStrings(Module &M) {
   vector<GlobalString *> GlobalStrings;
   std::unique_ptr<llvm::ExecutionEngine> engine;
   auto &Ctx = M.getContext();
-  
+
   // Get codec
   llvm::SMDiagnostic mod_err;
   // TODO: use flag instead of hardcoded path
@@ -175,7 +175,8 @@ vector<GlobalString *> encodeGlobalStrings(Module &M) {
       // Overwrite the global value
       Glob.setInitializer(NewConst);
 
-      GlobalStrings.push_back(new GlobalString(&Glob, CDA->getAsCString().size()));
+      GlobalStrings.push_back(
+          new GlobalString(&Glob, CDA->getAsCString().size()));
       Glob.setConstant(false);
     } else if (isa<ConstantStruct>(Initializer)) {
       // Handle structs
@@ -194,7 +195,8 @@ vector<GlobalString *> encodeGlobalStrings(Module &M) {
         // Overwrite the struct member
         CS->setOperand(i, NewConst);
 
-        GlobalStrings.push_back(new GlobalString(&Glob, i, CDA->getAsString().size()));
+        GlobalStrings.push_back(
+            new GlobalString(&Glob, i, CDA->getAsString().size()));
         Glob.setConstant(false);
       }
     }
@@ -208,7 +210,7 @@ struct ObfStringPass : public ModulePass {
   ObfStringPass() : ModulePass(ID) {}
 
   virtual bool runOnModule(Module &M) {
-    
+
     Function *MainFunc = M.getFunction("main");
     assert(MainFunc);
 
@@ -223,11 +225,11 @@ struct ObfStringPass : public ModulePass {
     createDecodeStubBlock(MainFunc, DecodeStub);
 
     return true;
-    }
-  };
+  }
+};
 } // end anonymous namespace
 
 char ObfStringPass::ID = 0;
 
-// Register the pass 
+// Register the pass
 static RegisterPass<ObfStringPass> X("obfstring", "Obfuscate strings");
