@@ -38,3 +38,4 @@ example.c
 *.ll
 *.bc 
 !*.txt
+!benchmark.sh

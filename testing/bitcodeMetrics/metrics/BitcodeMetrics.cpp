@@ -1,3 +1,5 @@
+// Source: https://github.com/b-mueller/obfuscation-metrics/tree/master/tools/llvm-bitcode-metrics
+
 //===----------------------------------------------------------------------===//
 //
 // This file defines a bitcode aggregating pass
