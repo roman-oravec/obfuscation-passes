@@ -34,7 +34,7 @@ Afterwards, use `clang` (or `clang++`) to obtain the obfuscated binary.
 ```
 clang foo_obfuscated.ll -o foo_obfuscated
 ```
-If the project you want to obfuscated contains multiple source files, you can either obfuscate the bitcode files separately and link them with `llvm-link`, or link them first and obfuscate the resulting bitcode file. 
+If the project you want to obfuscate contains multiple source files, you can either obfuscate the bitcode files separately and link them with `llvm-link`, or link them first and obfuscate the resulting bitcode file. 
 
 Following flags must be used to apply corresponding passes:
 
